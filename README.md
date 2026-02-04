@@ -81,12 +81,12 @@ This repository includes a comprehensive setup script that automates the NAT/Mas
 
 2. **Edit the script to set your exit node name** (optional):
    
-   Open the script and modify the `TAILSCALE_EXIT_NODE` variable around line 204:
+   Open the script and modify the `TAILSCALE_EXIT_NODE` variable:
    ```bash
    nano setup-tailscale-nat.sh
    ```
    
-   Change:
+   Search for and change:
    ```bash
    TAILSCALE_EXIT_NODE="raspberrypi4"
    ```
@@ -145,9 +145,9 @@ sudo sysctl -w net.ipv4.ip_forward=1
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
 
 # Persist across reboots
-echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.d/99-tailscale.conf
-echo "net.ipv6.conf.all.forwarding = 1" | sudo tee -a /etc/sysctl.d/99-tailscale.conf
-sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.d/99-tailscale-forwarding.conf
+echo "net.ipv6.conf.all.forwarding = 1" | sudo tee -a /etc/sysctl.d/99-tailscale-forwarding.conf
+sudo sysctl -p /etc/sysctl.d/99-tailscale-forwarding.conf
 ```
 
 ### Configure Exit Node
