@@ -604,6 +604,128 @@ show_usage() {
     echo "  $0 --static-ip-status"
 }
 
+# ============================================
+# Watchdog & Boot Stability (Parent-Proofing)
+# ============================================
+
+WATCHDOG_SCRIPT="/usr/local/bin/tailscale-watchdog.sh"
+WATCHDOG_LOG="/var/log/tailscale-watchdog.log"
+BOOT_TIMER_FILE="/etc/systemd/system/tailscaled-delay.timer"
+
+setup_watchdog() {
+    log_info "Configuring Tailscale Watchdog..."
+
+    # Create the watchdog script
+    cat > "$WATCHDOG_SCRIPT" << EOF
+#!/bin/bash
+# Tailscale connection watchdog for $TAILSCALE_EXIT_NODE
+EXIT_NODE="$TAILSCALE_EXIT_NODE"
+
+# Try to ping the exit node (3 packets, 5 sec timeout)
+if ! ping -c 3 -W 5 \$EXIT_NODE > /dev/null 2>&1; then
+    echo "\$(date): Exit node \$EXIT_NODE unreachable. Restarting Tailscale..." >> $WATCHDOG_LOG
+    systemctl restart tailscaled
+    sleep 10
+    tailscale up --exit-node=\$EXIT_NODE --accept-routes --exit-node-allow-lan-access=true
+else
+    # Optional: uncomment for verbose logging
+    # echo "\$(date): Connection to \$EXIT_NODE healthy." >> $WATCHDOG_LOG
+    exit 0
+fi
+EOF
+
+    chmod +x "$WATCHDOG_SCRIPT"
+    
+    # Add to crontab idempotently (runs every 5 minutes)
+    (crontab -l 2>/dev/null | grep -v "$WATCHDOG_SCRIPT"; echo "*/5 * * * * $WATCHDOG_SCRIPT") | crontab -
+    
+    log_info "Watchdog script installed at $WATCHDOG_SCRIPT"
+    log_info "Cron job scheduled for every 5 minutes"
+}
+
+setup_boot_delay() {
+    log_info "Configuring 45-second boot delay to prevent 'Startup Storm'..."
+
+    cat > "$BOOT_TIMER_FILE" << EOF
+[Unit]
+Description=Delay Tailscale start after boot to let network settle
+
+[Timer]
+OnBootSec=45s
+Unit=tailscaled.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    # Re-configure service to wait for timer
+    systemctl disable tailscaled.service > /dev/null 2>&1
+    systemctl enable tailscaled-delay.timer > /dev/null 2>&1
+    systemctl daemon-reload
+
+    log_info "Boot delay timer enabled (tailscaled will now start 45s after power-on)"
+}# ============================================
+# Watchdog & Boot Stability (Parent-Proofing)
+# ============================================
+
+WATCHDOG_SCRIPT="/usr/local/bin/tailscale-watchdog.sh"
+WATCHDOG_LOG="/var/log/tailscale-watchdog.log"
+BOOT_TIMER_FILE="/etc/systemd/system/tailscaled-delay.timer"
+
+setup_watchdog() {
+    log_info "Configuring Tailscale Watchdog..."
+
+    # Create the watchdog script
+    cat > "$WATCHDOG_SCRIPT" << EOF
+#!/bin/bash
+# Tailscale connection watchdog for $TAILSCALE_EXIT_NODE
+EXIT_NODE="$TAILSCALE_EXIT_NODE"
+
+# Try to ping the exit node (3 packets, 5 sec timeout)
+if ! ping -c 3 -W 5 \$EXIT_NODE > /dev/null 2>&1; then
+    echo "\$(date): Exit node \$EXIT_NODE unreachable. Restarting Tailscale..." >> $WATCHDOG_LOG
+    systemctl restart tailscaled
+    sleep 10
+    tailscale up --exit-node=\$EXIT_NODE --accept-routes --exit-node-allow-lan-access=true
+else
+    # Optional: uncomment for verbose logging
+    # echo "\$(date): Connection to \$EXIT_NODE healthy." >> $WATCHDOG_LOG
+    exit 0
+fi
+EOF
+
+    chmod +x "$WATCHDOG_SCRIPT"
+    
+    # Add to crontab idempotently (runs every 5 minutes)
+    (crontab -l 2>/dev/null | grep -v "$WATCHDOG_SCRIPT"; echo "*/5 * * * * $WATCHDOG_SCRIPT") | crontab -
+    
+    log_info "Watchdog script installed at $WATCHDOG_SCRIPT"
+    log_info "Cron job scheduled for every 5 minutes"
+}
+
+setup_boot_delay() {
+    log_info "Configuring 45-second boot delay to prevent 'Startup Storm'..."
+
+    cat > "$BOOT_TIMER_FILE" << EOF
+[Unit]
+Description=Delay Tailscale start after boot to let network settle
+
+[Timer]
+OnBootSec=45s
+Unit=tailscaled.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    # Re-configure service to wait for timer
+    systemctl disable tailscaled.service > /dev/null 2>&1
+    systemctl enable tailscaled-delay.timer > /dev/null 2>&1
+    systemctl daemon-reload
+
+    log_info "Boot delay timer enabled (tailscaled will now start 45s after power-on)"
+}
+
 main() {
     # Parse command line arguments
     local cmd=""
@@ -710,6 +832,12 @@ main() {
     echo ""
 
     configure_tailscale_exit_node
+    echo ""
+
+    setup_watchdog
+    echo ""
+    
+    setup_boot_delay
     echo ""
 
     log_info "============================================"
